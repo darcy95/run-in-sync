@@ -33,14 +33,15 @@ I used them:
 +---+            +---+         +---+           +---+
 
 
-I had to collect packets that are generated from EE1 and destined to EE4 from
-every nodes (EE1 ~ EE4). Normally in such a setup, when one of these machines
-experiences a delay, all subsequent experiments will be out of their joint
-work. So, by using this program, Controllees send the status message to the
-Controller on every experiment steps, and will only start an experiment when
-the Controller gives them an order to start. Scripts are simple and easy to
-read, so modify them as you want and help youself to escape from the experiment
-slavery. ;)
+I had to record network packets that are generated from EE1 and destined to
+EE4. The same packet had to be recorded on every nodes (EE1 ~ EE4). Normally in
+such a setup, when one of these machines experiences a delay, all subsequent
+experiments will be out of their joint work. So, by using this program,
+Controllees send the status message to the Controller on every experiment
+steps. The Controller can orchestrate the experiment based on the status sent
+by Controllees. For example, Controllees will only start an experiment when the
+Controller gives them an order to start it. 
 
-A step-by-step instruction may be added in this document in the future, but I
-can't promise.
+These scripts are simple and easy to read, so modify them as you want and help
+youself to escape from the experiment slavery. ;) A step-by-step instruction
+may be added in this document in the future, but I can't promise.
