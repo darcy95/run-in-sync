@@ -1,0 +1,179 @@
+#!/usr/bin/ruby 
+
+#+---------------------------------------------------------------------------------+
+#|	Author: Juhoon Kim (kimjuhoon@gmail.com)
+#|  Last update: 2012-04-01
+#+---------------------------------------------------------------------------------+
+
+require 'optparse';
+require 'socket'
+
+$CLIENT_STATUS_NONE = 0;
+$CLIENT_STATUS_READY = 1;
+$CLIENT_STATUS_RUNNING = 2;
+$CLIENT_STATUS_FINISHED = 3;
+
+class Controllee
+	def initialize(server_ip, server_port, my_id, my_ip, my_port, interval, runtime)
+		@id = my_id;
+		@port = my_port;
+		@stauts = $CLIENT_STATUS_NONE;
+		@socket_for_sending = UDPSocket.open();
+		@socket_for_sending.connect(server_ip, server_port);
+		@running = true;
+		@timeout = 0;
+		@runtime = runtime;
+		@time_recv_run = 0;
+
+		@server_thread = Thread.start do
+			recv = UDPSocket.open();
+
+			if defined? Fcntl::O_NONBLOCK
+		        if defined? Fcntl::F_GETFL
+        	        recv.fcntl(Fcntl::F_SETFL, sock.fcntl(Fcntl::F_GETFL) | Fcntl::O_NONBLOCK)
+		        else
+        	        recv.fcntl(Fcntl::F_SETFL, Fcntl::O_NONBLOCK)
+		        end
+			end
+
+			recv.bind(my_ip, my_port);
+
+			msg = "HELLO " + my_id + " " + my_ip + " " + my_port.to_s + " " + interval.to_s;
+			@socket_for_sending.send(msg, 0);		
+
+			while (@running)
+				sel = IO.select([recv], nil, nil, 0);
+
+				if sel
+					msg, host = recv.recvfrom(1024);
+					log(Time.new.to_s + " " + msg + " received from controller");				
+					cmd, *params = msg.chomp.upcase.split(" ");
+
+					case cmd
+						when "STANDBY"
+							recv_standby();
+						when "RUN"
+							recv_run(params.join(" "));
+						when "RESET"
+							recv_reset();
+						when "TERMINATE"
+							recv_terminate();
+						else
+					end
+				end
+
+				case @status
+					when $CLIENT_STATUS_NONE
+					when $CLIENT_STATUS_READY
+					when $CLIENT_STATUS_RUNNING
+						if (@timeout <= Time.now.to_i - @time_recv_run)
+							system("./end.sh &");
+							@status = $CLIENT_STATUS_FINISHED;
+						end
+					when $CLIENT_STATUS_FINISHED
+						@socket_for_sending.send("FINISHED " + @id, 0);
+						@status = $CLIENT_STATUS_NONE;
+					else
+				end
+			end
+
+			recv.close();
+		end
+	end
+
+	def recv_standby
+		@socket_for_sending.send("READY " + @id, 0);
+		@status = $CLIENT_STATUS_READY;
+	end
+
+	def recv_run(params)
+		@socket_for_sending.send("RUNNING " + @id, 0);
+
+		if (@status < $CLIENT_STATUS_RUNNING)
+			@status = $CLIENT_STATUS_RUNNING;
+			@timeout = @runtime;
+			@time_recv_run = Time.now.to_i;
+			
+			system("./start.sh " + params + " &");
+		else
+			log(Time.new.to_s + " " + msg + " message ignored");
+		end
+	end
+
+	def recv_reset
+		@socket_for_sending.send("", 0);
+		@status = $CLIENT_STATUS_NONE;
+	end
+
+	def recv_terminate
+		close();
+	end
+
+	def close
+		@socket_for_sending.close();
+		exit;
+	end
+
+	def log(msg)
+		puts msg;
+	end
+
+	def run
+		@server_thread.join;
+	end
+end
+
+def opt_parse(args)
+ 	options = Hash.new;
+
+	OptionParser.new do |opts|
+        opts.banner = "Usage: controllee [parameters (all required)]";
+
+		opts.on("--server-ip S", String, "Server (controller's) IP address") do |ip|
+			options[:sip] = ip;
+		end
+
+		opts.on("--server-port N", Integer, "Server (controller's) UDP port number") do |port|
+			options[:sport] = port;
+		end
+
+		opts.on("--my-ip S", String, "Local (controllee's) IP") do |ip|
+			options[:cip] = ip;
+		end
+
+		opts.on("--my-port N", Integer, "Local (controllee's) UDP port number") do |port|
+			options[:cport] = port;
+		end
+
+		opts.on("--identifier S", String, "Controllee identifier") do |id|
+			options[:id] = id;
+		end
+
+		opts.on("--delay N", Integer, "Delay in seconds") do |delay|
+			options[:delay] = delay;
+		end
+
+		opts.on("--runtime N", Integer, "Running time (in seconds) of the invoked process") do |runtime|
+			options[:runtime] = runtime;
+		end
+
+		opts.on_tail("-h", "--help", "Show this message") do
+			puts opts
+			exit
+		end
+
+		options[:help] = opts.to_s;
+	end.parse!(args);
+
+	if (!options[:sip] || !options[:cip] || !options[:sport] || !options[:cport] || !options[:id] || !options[:delay] || !options[:runtime])
+		puts options[:help];
+		exit;
+	end
+
+	return options[:sip], options[:sport], options[:id], options[:cip], options[:cport], options[:delay], options[:runtime];
+end
+
+# IPSocket.getaddress(Socket.gethostname)
+c = Controllee.new(*opt_parse(ARGV));
+c.run;
+

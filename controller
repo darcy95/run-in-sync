@@ -1,0 +1,287 @@
+#!/usr/bin/ruby
+
+#+---------------------------------------------------------------------------------+
+#|	Author: Juhoon Kim (kimjuhoon@gmail.com)
+#|  Last update: 2012-04-01
+#+---------------------------------------------------------------------------------+
+
+require 'optparse';
+require 'socket';
+
+$TIMEOUT = 10;
+
+$C_IP = 0;
+$C_PORT = 1;
+$C_INTERVAL = 2;
+$C_STATUS = 3;
+
+$CLIENT_STATUS_NONE = 0;
+$CLIENT_STATUS_READY = 1;
+$CLIENT_STATUS_ORDERED = 2;
+$CLIENT_STATUS_RUNNING = 3;
+$CLIENT_STATUS_FINISHED = 4;
+
+$SERVER_STATUS_NONE = 0;
+$SERVER_STATUS_ASK_READY = 1;
+$SERVER_STATUS_WAIT_READY = 2; 
+$SERVER_STATUS_CMD_START = 3;
+$SERVER_STATUS_WAIT_FINISH = 4;
+$SERVER_STATUS_RESET = 5;
+$SERVER_STATUS_CLOSE = 6;
+
+$RECV_SENDER_PORT = 1;
+$RECV_SENDER_IP = 3;
+
+class Controller
+	def initialize(ip, port, tries, num_controllee, extra)
+		# [id]->(ip, port, interval, status)
+		@controllees = Hash.new;
+		@num_controllee = num_controllee;
+		@running = true;
+		@rounds_to_run = tries;
+		@extra_options = extra;
+		@current_round = 0;
+		@server_status = $SERVER_STATUS_NONE;
+		@time_runcmd_begin = 0;
+		@time_wait_ready_begin = 0;
+		@time_wait_finish_begin = 0;
+
+		@socket_for_sending = UDPSocket.open();
+
+		@server_thread = Thread.start do
+			server = UDPSocket.open();
+
+			if defined? Fcntl::O_NONBLOCK
+				if defined? Fcntl::F_GETFL
+        				server.fcntl(Fcntl::F_SETFL, sock.fcntl(Fcntl::F_GETFL) | Fcntl::O_NONBLOCK)
+       				 else
+        				server.fcntl(Fcntl::F_SETFL, Fcntl::O_NONBLOCK)
+				end
+			end
+
+			server.bind(ip, port);
+
+			while (@running)
+				sel = IO.select([server], nil, nil, 0); # Last parameter 0 is a waiting time
+
+				if sel
+					msg, host = server.recvfrom(1024);
+					cmd, *params = msg.chomp.upcase.split(" ");
+
+					case cmd
+						when "HELLO" # HELLO "id" "ip-address" udp-port interval-in-seconds
+							recv_hello(*params);
+						when "READY" # READY "id"
+							recv_ready(*params);
+						when "RUNNING" # RUNNING "id"
+							recv_running(*params);
+						when "FINISHED" # FINISHED "id"
+							recv_finished(*params);
+						else
+					end
+				end
+
+				case @server_status
+					when $SERVER_STATUS_NONE
+						do_none();
+					when $SERVER_STATUS_ASK_READY
+						do_ask_ready();
+					when $SERVER_STATUS_WAIT_READY
+						do_wait_ready();
+					when $SERVER_STATUS_CMD_START
+						do_cmd_start();
+					when $SERVER_STATUS_WAIT_FINISH
+						do_wait_finish();
+					when $SERVER_STATUS_RESET
+						do_reset();
+					when $SERVER_STATUS_CLOSE
+						do_close()
+					else
+				end
+			end
+			
+			server.close();
+		end
+	end
+
+	def recv_hello(id, ip, port, interval)
+		insert(id, ip, port, interval);		
+
+		log(Time.now.to_s + " " + id + " joined");
+	end
+
+	def recv_ready(id)
+		@controllees[id][$C_STATUS] = $CLIENT_STATUS_READY;
+
+		log(Time.now.to_s + " " + id + " is ready");
+	end
+
+	def recv_running(id)
+		@controllees[id][$C_STATUS] = $CLIENT_STATUS_RUNNING;
+
+		log(Time.now.to_s + " " + id + " is running");
+	end
+
+	def recv_finished(id)
+		@controllees[id][$C_STATUS] = $CLIENT_STATUS_FINISHED;
+
+		log(Time.now.to_s + " " + id + " is finished");
+	end
+
+	def do_none
+		@server_status = (@controllees.count == @num_controllee) ? $SERVER_STATUS_ASK_READY : $SERVER_STATUS_NONE;
+
+		log("------" + (@current_round+1).to_s + "/" + @rounds_to_run.to_s  + "------") if @server_status == $SERVER_STATUS_ASK_READY;
+	end
+
+	def do_ask_ready	
+		@controllees.each_value {|controllee| @socket_for_sending.send("STANDBY", 0, controllee[$C_IP], controllee[$C_PORT]) if (controllee[$C_STATUS] == $CLIENT_STATUS_NONE); };
+		@timeout = $TIMEOUT;
+		@time_wait_ready_begin = Time.now.to_i;
+		
+		@server_status = $SERVER_STATUS_WAIT_READY;
+
+		log(Time.now.to_s + " controller asks controllees to standby");
+	end
+
+	def do_wait_ready
+		complete = true;
+
+		@controllees.each_value {|controllee| 
+			if (controllee[$C_STATUS] != $CLIENT_STATUS_READY || complete == false)
+				complete = false;
+			end
+		}
+
+		if (complete == true)
+			@server_status = $SERVER_STATUS_CMD_START;
+			@time_runcmd_begin = Time.now.to_i;
+
+			log(Time.now.to_s + " every controllees are ready");
+		else
+			if (@timeout <= Time.now.to_i - @time_wait_ready_begin)
+			   	@server_status = $SERVER_STATUS_ASK_READY;
+			end
+		end
+	end	
+
+	def do_cmd_start
+		@controllees.each {|id, controllee| 
+			if ((controllee[$C_STATUS] == $CLIENT_STATUS_READY) && ((Time.now.to_i - @time_runcmd_begin) > controllee[$C_INTERVAL].to_i) == true)
+				run_command = "RUN" + " " + @extra_options + " "  + format("%03d", @current_round+1) ;
+				@socket_for_sending.send(run_command, 0, controllee[$C_IP], controllee[$C_PORT]);
+				controllee[$C_STATUS] = $CLIENT_STATUS_ORDERED;
+				log(Time.now.to_s + " controller commands " + id + " to run " + run_command);
+			end
+		}
+		
+		complete = true;
+
+		@controllees.each_value {|controllee| 
+			if (controllee[$C_STATUS] < $CLIENT_STATUS_RUNNING || complete == false)
+				complete = false;
+			end
+		}
+
+		if (complete == true)
+			@server_status = $SERVER_STATUS_WAIT_FINISH;
+			@timeout = 20 * $TIMEOUT;
+			@time_wait_finish_begin = Time.now.to_i;
+		end
+	end
+
+	def do_wait_finish
+		complete = true;
+
+		@controllees.each_value {|controllee| 
+			if (controllee[$C_STATUS] != $CLIENT_STATUS_FINISHED || complete == false)
+				complete = false;
+			end
+		}
+
+		if (complete == true)
+			@server_status = $SERVER_STATUS_RESET;
+			@current_round = @current_round + 1;
+			log(Time.now.to_s + " every controllees finished their job");
+		else
+			if (@timeout <= Time.now.to_i - @time_wait_finish_begin)
+				@server_status = $SERVER_STATUS_RESET;
+			end
+		end		
+	end
+
+	def do_reset
+		@timeout = 0;
+		@time_runcmd_begin = 0;
+		@time_wait_ready_begin = 0;
+		@time_wait_finish_begin = 0;
+		@controllees.each_value {|controllee| controllee[$C_STATUS] = $CLIENT_STATUS_NONE; }
+		@server_status = (@current_round == @rounds_to_run) ? $SERVER_STATUS_CLOSE : $SERVER_STATUS_NONE;
+	end
+
+	def do_close
+		@controllees.each_value {|controllee| @socket_for_sending.send("TERMINATE", 0, controllee[$C_IP], controllee[$C_PORT]) if (controllee[$C_STATUS] == $CLIENT_STATUS_NONE); };
+		@socket_for_sending.close();
+		@running = false;
+		exit;
+	end
+
+	def insert(id, ip, port, interval)
+		@controllees[id] = [ip, port, interval, $CLIENT_STATUS_NONE] if (@controllees.has_key?(id) == false);
+	end
+
+	def log(msg)
+		puts msg;
+	end
+
+	def run
+		@server_thread.join;
+	#	@status_thread.join;
+	end
+end
+
+def opt_parse(args)
+ 	options = Hash.new;
+
+	OptionParser.new do |opts|
+        opts.banner = "Usage: controller [parameters]";
+
+		opts.on("-s", "--ip S", String, "IP address to use") do |s|
+			options[:ip] = s;
+		end
+
+		opts.on("-n", "--num N", Integer, "Number of controllee") do |n|
+			options[:num] = n;
+		end
+
+		opts.on("-p", "--port N", Integer, "Controller's UDP port number") do |p|
+			options[:port] = p;
+		end
+
+		opts.on("-t", "--trial N", Integer, "Number of experiments") do |t|
+			options[:trial] = t;
+		end
+
+		opts.on("-e", "--extra S", String, "Extra options to deliver as parameters of a RUN command") do |e|
+			options[:extra] = e;
+		end
+
+		opts.on_tail("-h", "--help", "Show this message") do
+			puts opts
+			exit
+		end
+
+		options[:help] = opts.to_s;
+	end.parse!(args);
+
+	if (!options[:ip] || !options[:port] || !options[:trial] || !options[:num])
+		puts options[:help];
+		exit;
+	end
+
+	return [options[:ip], options[:port], options[:trial], options[:num], options[:extra]];
+end
+
+c = Controller.new(*opt_parse(ARGV));
+c.run;
+

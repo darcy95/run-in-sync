@@ -1,0 +1,28 @@
+#!/bin/sh
+
+case $1 in
+    # Controller
+	"er")
+		./controller --ip 10.0.0.1 --port 5001 --num 2 --trial 50000 --extra "nolisp 0"
+		;;
+    # Controllee 1        
+	"ee1")
+		./controllee --server-ip 10.0.0.1 --server-port 5001 --my-ip 10.0.0.2 --my-port 5002 --identifier OL-1 --delay 5 --runtime 30
+		;;
+    # Controllee 2        
+	"ee2")
+		./controllee --server-ip 10.0.0.1 --server-port 5001 --my-ip 10.0.0.3 --my-port 5002 --identifier OL-1 --delay 5 --runtime 30
+		;;
+    # Controllee 3
+	"ee3")
+		./controllee --server-ip 10.0.0.1 --server-port 5001 --my-ip 10.0.0.4 --my-port 5002 --identifier OL-1 --delay 5 --runtime 30
+		;;
+    # Controllee 4        
+	"ee4")
+		./controllee --server-ip 10.0.0.1 --server-port 5001 --my-ip 10.0.0.5 --my-port 5002 --identifier OL-1 --delay 5 --runtime 30
+		;;
+	*)
+		null
+		;;
+esac
+	
