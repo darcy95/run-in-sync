@@ -20,17 +20,17 @@ and you can spend your time on a more useful stuff. How does it sound?
 Ok, to give you more insight about these scripts, here's my experiment setup when
 I used them:
 
-                       +----------+
-                       |Controller|
-                       +-----+----+
-                             |
-     +----------------+------+------+---------------+
-     |                |             |               |
-     |                |             |               |
-     |                |             |               |
-   +-+-+            +-+-+         +-+-+           +-+-+
-   |EE1+------------+EE2+---------+EE3+-----------+EE4|
-   +---+            +---+         +---+           +---+
+                            +----------+
+                            |Controller|
+                            +-----+----+
+                                  |
+         +----------------+------+------+---------------+
+         |                |             |               |
+         |                |             |               |
+         |                |             |               |
+       +-+-+            +-+-+         +-+-+           +-+-+
+       |EE1+------------+EE2+---------+EE3+-----------+EE4|
+       +---+            +---+         +---+           +---+
 
 I had to record network packets that are generated from EE1 and forwarded to
 EE4 via EE2 and EE3. The same packet had to be recorded on every nodes (EE1 ~ EE4). 
