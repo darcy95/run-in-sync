@@ -29,7 +29,7 @@ I used them:
   |                |             |               |
   |                |             |               |
 +-+-+            +-+-+         +-+-+           +-+-+
-|EE1+----------->+EE2+-------->+EE3+---------->+EE4|
+|EE1+------------+EE2+---------+EE3+-----------+EE4|
 +---+            +---+         +---+           +---+
 
 
@@ -44,4 +44,3 @@ slavery. ;)
 
 A step-by-step instruction may be added in this document in the future, but I
 can't promise.
-# run-in-sync
