@@ -20,10 +20,10 @@ and you can spend your time on a more useful stuff. How does it sound?
 Ok, to give you more insight about these scripts, here's my experiment setup when
 I used them:
 
-                            +----------+
-                            |Controller|
-                            +-----+----+
-                                  |
+                           +----------+
+                           |Controller|
+                           +-----+----+
+                                 |
          +----------------+------+------+---------------+
          |                |             |               |
          |                |             |               |
