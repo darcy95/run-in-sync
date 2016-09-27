@@ -43,4 +43,4 @@ Controller gives them an order to start it.
 
 These scripts are simple and easy to read, so modify them as you want and help
 youself to escape from the experiment slavery. ;) A step-by-step instruction
-may be added in this document in the future, but I can't promise.
+may be added in this document in the future.
